@@ -1,53 +1,91 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text.RegularExpressions;
 using FuzzySharp;
 
-public class FrenchDateParser
+public class UniversalDateParser
 {
-    public static readonly Dictionary<string, string> FrenchMonthMap = new Dictionary<string, string>
+    private static readonly Dictionary<string, string> MonthMap = new(StringComparer.OrdinalIgnoreCase)
     {
-        {"janvier", "01"}, {"janv", "01"},
-        {"février", "02"}, {"fevr", "02"}, {"fevrier", "02"}, {"fév", "02"},
-        {"mars", "03"},
-        {"avril", "04"},
-        {"mai", "05"},
-        {"juin", "06"},
-        {"juillet", "07"}, {"juil", "07"},
-        {"août", "08"}, {"aout", "08"},
-        {"septembre", "09"}, {"sept", "09"},
+        // French months
+        {"janvier", "01"}, {"janv", "01"}, {"jan", "01"},
+        {"février", "02"}, {"fevrier", "02"}, {"fevr", "02"}, {"fév", "02"}, {"fev", "02"}, {"feb", "02"},
+        {"mars", "03"}, {"mar", "03"},
+        {"avril", "04"}, {"avr", "04"}, {"apr", "04"},
+        {"mai", "05"}, {"may", "05"}, {"ma", "05"},
+        {"juin", "06"}, {"jun", "06"},
+        {"juillet", "07"}, {"juil", "07"}, {"jul", "07"},
+        {"août", "08"}, {"aout", "08"}, {"aug", "08"},
+        {"septembre", "09"}, {"sept", "09"}, {"sep", "09"},
         {"octobre", "10"}, {"oct", "10"},
         {"novembre", "11"}, {"nov", "11"},
-        {"décembre", "12"}, {"dec", "12"}, {"déc", "12"}
+        {"décembre", "12"}, {"decembre", "12"}, {"dec", "12"}, {"déc", "12"},
+        // Fallback numeric strings just in case someone writes "01" etc.
+        {"01", "01"}, {"02", "02"}, {"03", "03"}, {"04", "04"}, {"05", "05"}, {"06", "06"},
+        {"07", "07"}, {"08", "08"}, {"09", "09"}, {"10", "10"}, {"11", "11"}, {"12", "12"}
     };
 
-    public static string GetBestMonthMatch(string input)
+    private static string GetBestMonthMatch(string input)
     {
-        var bestMatch = FuzzySharp.Process.ExtractOne(input.ToLower(), FrenchMonthMap.Keys);
-        return bestMatch?.Score > 70 ? FrenchMonthMap[bestMatch.Value] : null;
+        if (string.IsNullOrWhiteSpace(input)) return null;
+
+        // Check direct match
+        if (MonthMap.TryGetValue(input.Trim(), out var direct))
+            return direct;
+
+        var match = FuzzySharp.Process.ExtractOne(input.ToLower(), MonthMap.Keys);
+        return match?.Score > 65 ? MonthMap[match.Value] : null;
     }
 
-    public static string ParseNoisyFrenchDate(string noisyInput)
+    public static string ParseToStandardFormat(string input)
     {
-        if (string.IsNullOrWhiteSpace(noisyInput)) return null;
+        if (string.IsNullOrWhiteSpace(input)) return null;
 
-        // Clean the input
-        string cleaned = Regex.Replace(noisyInput, @"[^\w\s-]", " ");
-        cleaned = Regex.Replace(cleaned, @"\s+", " ").Trim();
+        // Remove noise
+        input = Regex.Replace(input, @"[^\w\s/-]", " ");
+        input = Regex.Replace(input, @"\s+", "");
 
-        // Extract day, month string, year
-        var parts = cleaned.Split(' ');
-        if (parts.Length < 3) return null;
+        // Tokenize by common delimiters
+        var tokens = Regex.Split(input, @"[/\s.-]+").Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
 
-        string day = Regex.Match(parts[0], @"\d+").Value.PadLeft(2, '0');
-        string rawMonth = parts[1];
-        string year = parts[2];
+        string day = null, month = null, year = null;
 
-        string month = GetBestMonthMatch(rawMonth);
-        if (month == null || day.Length != 2 || year.Length != 4) return null;
+        foreach (string token in tokens)
+        {
+            // Match full 4-digit year
+            if (Regex.IsMatch(token, @"^\d{4}$") && year == null)
+                year = token;
 
-        string finalDateStr = $"{day}-{month}-{year}";
-        return finalDateStr;
+            // Handle 2-digit year
+            else if (Regex.IsMatch(token, @"^\d{2}$") && year == null)
+                year = "20" + token;
+
+            // Numeric token 1-12 that might be month
+            else if (Regex.IsMatch(token, @"^\d{1,2}$"))
+            {
+                int num = int.Parse(token);
+                if (num >= 1 && num <= 31)
+                {
+                    if (day == null) day = token.PadLeft(2, '0');
+                    else if (month == null) month = token.PadLeft(2, '0');
+                }
+            }
+            else if (month == null)
+            {
+                // Try match French/English month (full or abbreviated)
+                month = GetBestMonthMatch(token);
+            }
+        }
+
+        //  Strict: Must have all 3 parts
+        if (string.IsNullOrWhiteSpace(day) || string.IsNullOrWhiteSpace(month) || string.IsNullOrWhiteSpace(year))
+            return null;
+
+        string finalDate = $"{day}-{month}-{year}";
+        return DateTime.TryParseExact(finalDate, "dd-MM-yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt)
+            ? dt.ToString("dd-MM-yyyy")
+            : null;
     }
 }
