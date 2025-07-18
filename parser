@@ -2,7 +2,6 @@ using System;
 using System.Globalization;
 using System.Text.RegularExpressions;
 
-// Enum to represent the type of number formatting detected
 public enum NumberFormatType
 {
     French,
@@ -12,83 +11,80 @@ public enum NumberFormatType
 
 public static class AmountCleaner
 {
-    // Cleans and normalizes input amount string to "123456.78" format
     public static string CleanAmount(string input)
     {
         if (string.IsNullOrWhiteSpace(input))
-            return "0.00"; // Return default if input is null, empty, or whitespace
+            return "0.00";
 
-        // Step 1: Remove currency symbols, common currency words, and non-numeric characters (except ., and ,)
-        // \p{Sc} = any currency symbol (like $, €, ₹, £)
-        // [^0-9,.\s] = remove anything not a digit, comma, dot, or space
-        string cleaned = Regex.Replace(input, @"[\p{Sc}€$₹£]|EURO|USD|INR|GBP|[^0-9,.\s]", "", RegexOptions.IgnoreCase);
+        // If input has too many mixed digits and letters, skip it (e.g., 1TT1000 Euro29)
+        if (HasAlphaNumericNoise(input))
+            return "0.00";
 
-        // Step 2: Remove all spaces
-        cleaned = Regex.Replace(cleaned, @"\s+", "");
+        // Remove common currency symbols/words and unwanted characters
+        string cleaned = Regex.Replace(input, @"[\p{Sc}€$₹£]|EURO|USD|INR|GBP", "", RegexOptions.IgnoreCase);
+        cleaned = Regex.Replace(cleaned, @"[^0-9,.\s]", ""); // keep only digits, dot, comma, spaces
+        cleaned = Regex.Replace(cleaned, @"\s+", ""); // remove all spaces
 
-        // Step 3: Detect format (French or English)
+        // Detect if format is French or English
         NumberFormatType format = DetectNumberFormat(input);
 
-        // Step 4: Normalize the string based on detected format
+        // Adjust separators based on format
         if (format == NumberFormatType.French)
         {
-            // French uses '.' as thousand separator and ',' as decimal
-            // Remove thousand separators and replace decimal with '.'
+            // French: ',' is decimal, '.' is thousand
             cleaned = cleaned.Replace(".", "").Replace(",", ".");
         }
         else if (format == NumberFormatType.English)
         {
-            // English uses ',' as thousand separator and '.' as decimal
-            // Remove thousand separators
+            // English: '.' is decimal, ',' is thousand
             cleaned = cleaned.Replace(",", "");
         }
 
-        // Step 5: Try parsing the cleaned string to decimal
+        // Parse to decimal safely
         if (decimal.TryParse(cleaned, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal result))
         {
-            // Format the parsed number to always have two decimal places
             return result.ToString("F2", CultureInfo.InvariantCulture);
         }
 
-        // Step 6: If parsing failed, return default value
+        // Fallback
         return "0.00";
     }
 
-    // Determines whether the input string follows French or English number format
+    // Detects whether the string is French, English or Unknown format
     private static NumberFormatType DetectNumberFormat(string input)
     {
+        string upper = input.ToUpperInvariant();
         int commaIndex = input.IndexOf(',');
         int dotIndex = input.IndexOf('.');
 
-        // Convert to uppercase to detect currency hints (e.g., EURO or USD)
-        string upper = input.ToUpperInvariant();
-
-        // Step 1: Strong hints from currency words/symbols
+        // Strong currency hint
         if (upper.Contains("€") || upper.Contains("EURO"))
             return NumberFormatType.French;
 
-        if (upper.Contains("$") || upper.Contains("USD") || upper.Contains("GBP") || upper.Contains("£") || upper.Contains("INR") || upper.Contains("₹"))
+        if (upper.Contains("$") || upper.Contains("USD") || upper.Contains("INR") || upper.Contains("GBP") || upper.Contains("£") || upper.Contains("₹"))
             return NumberFormatType.English;
 
-        // Step 2: Fallback using order of comma and dot
+        // Punctuation fallback: 1,234.56 (English) vs 1.234,56 (French)
         if (commaIndex >= 0 && dotIndex >= 0)
         {
-            // If comma comes before dot, it's likely English (e.g., 1,234.56)
-            // If dot comes before comma, it's likely French (e.g., 1.234,56)
-            return (commaIndex < dotIndex) ? NumberFormatType.English : NumberFormatType.French;
+            return commaIndex < dotIndex ? NumberFormatType.English : NumberFormatType.French;
         }
         else if (commaIndex >= 0)
         {
-            // Only comma found → assume French (comma as decimal)
             return NumberFormatType.French;
         }
         else if (dotIndex >= 0)
         {
-            // Only dot found → assume English
             return NumberFormatType.English;
         }
 
-        // Step 3: If nothing detected, return unknown
         return NumberFormatType.Unknown;
+    }
+
+    // Helper to check if the input contains mixed alphanumeric noise (e.g., "1TT1000" or "1506h5")
+    private static bool HasAlphaNumericNoise(string input)
+    {
+        // Look for any digit-letter-digit pattern
+        return Regex.IsMatch(input, @"\d+[A-Za-z]+\d+");
     }
 }
