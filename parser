@@ -1,90 +1,96 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Text.RegularExpressions;
 
-public enum NumberFormatType
+class Program
 {
-    French,
-    English,
-    Unknown
-}
+    static void Main()
+    {
+        // Test inputs with various noisy formats
+        var testInputs = new List<string>
+        {
+            "2.6.05.21",
+            "26. 05 20 21",
+            "17/ 5/ 202 1",
+            "1 Janv 2021",
+            "01-Jan-21",
+            "10-8-23",
+            "8 janv. 23"
+        };
 
-public static class AmountCleaner
-{
-    public static string CleanAmount(string input)
+        // Process each input and print the parsed date
+        foreach (var input in testInputs)
+        {
+            string result = ParseNoisyDate(input);
+            Console.WriteLine($"Input: {input} => Parsed: {result}");
+        }
+    }
+
+    static string ParseNoisyDate(string input)
     {
         if (string.IsNullOrWhiteSpace(input))
-            return "0.00";
+            return "";
 
-        // If input has too many mixed digits and letters, skip it (e.g., 1TT1000 Euro29)
-        if (HasAlphaNumericNoise(input))
-            return "0.00";
+        // Step 1: Replace all non-alphanumeric characters with a space
+        string cleaned = Regex.Replace(input, @"[^A-Za-z0-9]", " ");
 
-        // Remove common currency symbols/words and unwanted characters
-        string cleaned = Regex.Replace(input, @"[\p{Sc}€$₹£]|EURO|USD|INR|GBP", "", RegexOptions.IgnoreCase);
-        cleaned = Regex.Replace(cleaned, @"[^0-9,.\s]", ""); // keep only digits, dot, comma, spaces
-        cleaned = Regex.Replace(cleaned, @"\s+", ""); // remove all spaces
+        // Step 2: Normalize multiple spaces to a single space and trim
+        cleaned = Regex.Replace(cleaned, @"\s+", " ").Trim();
 
-        // Detect if format is French or English
-        NumberFormatType format = DetectNumberFormat(input);
-
-        // Adjust separators based on format
-        if (format == NumberFormatType.French)
+        // Step 3: Replace known month names (French & English short forms) with numeric values
+        Dictionary<string, string> monthMap = new()
         {
-            // French: ',' is decimal, '.' is thousand
-            cleaned = cleaned.Replace(".", "").Replace(",", ".");
-        }
-        else if (format == NumberFormatType.English)
+            {"janv", "01"}, {"févr", "02"}, {"mars", "03"}, {"avr", "04"}, {"mai", "05"}, {"juin", "06"},
+            {"juil", "07"}, {"août", "08"}, {"sept", "09"}, {"oct", "10"}, {"nov", "11"}, {"déc", "12"},
+            {"jan", "01"}, {"feb", "02"}, {"mar", "03"}, {"apr", "04"}, {"jun", "06"},
+            {"jul", "07"}, {"aug", "08"}, {"sep", "09"}, {"oct", "10"}, {"nov", "11"}, {"dec", "12"}
+        };
+
+        foreach (var pair in monthMap)
         {
-            // English: '.' is decimal, ',' is thousand
-            cleaned = cleaned.Replace(",", "");
+            cleaned = Regex.Replace(cleaned, pair.Key, pair.Value, RegexOptions.IgnoreCase);
         }
 
-        // Parse to decimal safely
-        if (decimal.TryParse(cleaned, NumberStyles.Any, CultureInfo.InvariantCulture, out decimal result))
+        // Step 4: Extract numeric parts (day, month, year) as a list of integers
+        var parts = Regex.Matches(cleaned, @"\d+");
+        var nums = new List<int>();
+
+        foreach (Match match in parts)
         {
-            return result.ToString("F2", CultureInfo.InvariantCulture);
+            if (int.TryParse(match.Value, out int val))
+                nums.Add(val);
         }
 
-        // Fallback
-        return "0.00";
-    }
+        // Step 5: Attempt parsing using multiple possible date formats
+        DateTime parsedDate;
+        string[] formats = {
+            "d M yy", "d M yyyy",
+            "dd MM yy", "dd MM yyyy",
+            "d MM yy", "d MM yyyy",
+            "yyyy MM dd"
+        };
 
-    // Detects whether the string is French, English or Unknown format
-    private static NumberFormatType DetectNumberFormat(string input)
-    {
-        string upper = input.ToUpperInvariant();
-        int commaIndex = input.IndexOf(',');
-        int dotIndex = input.IndexOf('.');
-
-        // Strong currency hint
-        if (upper.Contains("€") || upper.Contains("EURO"))
-            return NumberFormatType.French;
-
-        if (upper.Contains("$") || upper.Contains("USD") || upper.Contains("INR") || upper.Contains("GBP") || upper.Contains("£") || upper.Contains("₹"))
-            return NumberFormatType.English;
-
-        // Punctuation fallback: 1,234.56 (English) vs 1.234,56 (French)
-        if (commaIndex >= 0 && dotIndex >= 0)
+        for (int i = 0; i < formats.Length; i++)
         {
-            return commaIndex < dotIndex ? NumberFormatType.English : NumberFormatType.French;
-        }
-        else if (commaIndex >= 0)
-        {
-            return NumberFormatType.French;
-        }
-        else if (dotIndex >= 0)
-        {
-            return NumberFormatType.English;
+            try
+            {
+                string testStr = string.Join(" ", nums);
+
+                if (DateTime.TryParseExact(testStr, formats[i], CultureInfo.InvariantCulture, DateTimeStyles.None, out parsedDate))
+                {
+                    // Success: return in yyyy-MM-dd format
+                    return parsedDate.ToString("yyyy-MM-dd");
+                }
+            }
+            catch
+            {
+                // Just continue to next format if any exception occurs
+                continue;
+            }
         }
 
-        return NumberFormatType.Unknown;
-    }
-
-    // Helper to check if the input contains mixed alphanumeric noise (e.g., "1TT1000" or "1506h5")
-    private static bool HasAlphaNumericNoise(string input)
-    {
-        // Look for any digit-letter-digit pattern
-        return Regex.IsMatch(input, @"\d+[A-Za-z]+\d+");
+        // If nothing worked, return "Invalid"
+        return "Invalid";
     }
 }
