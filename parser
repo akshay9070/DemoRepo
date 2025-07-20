@@ -1,96 +1,39 @@
-using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.Text.RegularExpressions;
 
-class Program
-{
-    static void Main()
+    static string ParseDateFromDigits(string input)
     {
-        // Test inputs with various noisy formats
-        var testInputs = new List<string>
+        // Extract digits only
+        string digitsOnly = string.Concat(Regex.Matches(input, @"\d"));
+        //return !Regex.IsMatch(input, @"[a-zA-Z]");
+        try
         {
-            "2.6.05.21",
-            "26. 05 20 21",
-            "17/ 5/ 202 1",
-            "1 Janv 2021",
-            "01-Jan-21",
-            "10-8-23",
-            "8 janv. 23"
-        };
-
-        // Process each input and print the parsed date
-        foreach (var input in testInputs)
-        {
-            string result = ParseNoisyDate(input);
-            Console.WriteLine($"Input: {input} => Parsed: {result}");
-        }
-    }
-
-    static string ParseNoisyDate(string input)
-    {
-        if (string.IsNullOrWhiteSpace(input))
-            return "";
-
-        // Step 1: Replace all non-alphanumeric characters with a space
-        string cleaned = Regex.Replace(input, @"[^A-Za-z0-9]", " ");
-
-        // Step 2: Normalize multiple spaces to a single space and trim
-        cleaned = Regex.Replace(cleaned, @"\s+", " ").Trim();
-
-        // Step 3: Replace known month names (French & English short forms) with numeric values
-        Dictionary<string, string> monthMap = new()
-        {
-            {"janv", "01"}, {"févr", "02"}, {"mars", "03"}, {"avr", "04"}, {"mai", "05"}, {"juin", "06"},
-            {"juil", "07"}, {"août", "08"}, {"sept", "09"}, {"oct", "10"}, {"nov", "11"}, {"déc", "12"},
-            {"jan", "01"}, {"feb", "02"}, {"mar", "03"}, {"apr", "04"}, {"jun", "06"},
-            {"jul", "07"}, {"aug", "08"}, {"sep", "09"}, {"oct", "10"}, {"nov", "11"}, {"dec", "12"}
-        };
-
-        foreach (var pair in monthMap)
-        {
-            cleaned = Regex.Replace(cleaned, pair.Key, pair.Value, RegexOptions.IgnoreCase);
-        }
-
-        // Step 4: Extract numeric parts (day, month, year) as a list of integers
-        var parts = Regex.Matches(cleaned, @"\d+");
-        var nums = new List<int>();
-
-        foreach (Match match in parts)
-        {
-            if (int.TryParse(match.Value, out int val))
-                nums.Add(val);
-        }
-
-        // Step 5: Attempt parsing using multiple possible date formats
-        DateTime parsedDate;
-        string[] formats = {
-            "d M yy", "d M yyyy",
-            "dd MM yy", "dd MM yyyy",
-            "d MM yy", "d MM yyyy",
-            "yyyy MM dd"
-        };
-
-        for (int i = 0; i < formats.Length; i++)
-        {
-            try
+            if (digitsOnly.Length == 4)
             {
-                string testStr = string.Join(" ", nums);
-
-                if (DateTime.TryParseExact(testStr, formats[i], CultureInfo.InvariantCulture, DateTimeStyles.None, out parsedDate))
-                {
-                    // Success: return in yyyy-MM-dd format
-                    return parsedDate.ToString("yyyy-MM-dd");
-                }
+                int day = int.Parse(digitsOnly.Substring(0, 1));
+                int month = int.Parse(digitsOnly.Substring(1, 1));
+                int year = 2000 + int.Parse(digitsOnly.Substring(2, 2));
+                return new DateTime(year, month, day).ToString("yyyy-MM-dd");
             }
-            catch
+            else if (digitsOnly.Length == 6)
             {
-                // Just continue to next format if any exception occurs
-                continue;
+                int day = int.Parse(digitsOnly.Substring(0, 2));
+                int month = int.Parse(digitsOnly.Substring(2, 2));
+                int year = 2000 + int.Parse(digitsOnly.Substring(4, 2));
+                return new DateTime(year, month, day).ToString("yyyy-MM-dd");
+            }
+            else if (digitsOnly.Length == 8)
+            {
+                int day = int.Parse(digitsOnly.Substring(0, 2));
+                int month = int.Parse(digitsOnly.Substring(2, 2));
+                int year = int.Parse(digitsOnly.Substring(4, 4));
+                return new DateTime(year, month, day).ToString("yyyy-MM-dd");
+            }
+            else
+            {
+                return "Invalid format";
             }
         }
-
-        // If nothing worked, return "Invalid"
-        return "Invalid";
+        catch
+        {
+            return "Invalid date";
+        }
     }
-}
