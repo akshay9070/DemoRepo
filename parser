@@ -1,39 +1,14 @@
+# Add SAN extension for multiple seed nodes
+$sanBuilder = New-Object -ComObject X509Enrollment.CX509ExtensionAlternativeNames
+$altNames = New-Object -ComObject X509Enrollment.CAlternativeNames
 
-    static string ParseDateFromDigits(string input)
-    {
-        // Extract digits only
-        string digitsOnly = string.Concat(Regex.Matches(input, @"\d"));
-        //return !Regex.IsMatch(input, @"[a-zA-Z]");
-        try
-        {
-            if (digitsOnly.Length == 4)
-            {
-                int day = int.Parse(digitsOnly.Substring(0, 1));
-                int month = int.Parse(digitsOnly.Substring(1, 1));
-                int year = 2000 + int.Parse(digitsOnly.Substring(2, 2));
-                return new DateTime(year, month, day).ToString("yyyy-MM-dd");
-            }
-            else if (digitsOnly.Length == 6)
-            {
-                int day = int.Parse(digitsOnly.Substring(0, 2));
-                int month = int.Parse(digitsOnly.Substring(2, 2));
-                int year = 2000 + int.Parse(digitsOnly.Substring(4, 2));
-                return new DateTime(year, month, day).ToString("yyyy-MM-dd");
-            }
-            else if (digitsOnly.Length == 8)
-            {
-                int day = int.Parse(digitsOnly.Substring(0, 2));
-                int month = int.Parse(digitsOnly.Substring(2, 2));
-                int year = int.Parse(digitsOnly.Substring(4, 4));
-                return new DateTime(year, month, day).ToString("yyyy-MM-dd");
-            }
-            else
-            {
-                return "Invalid format";
-            }
-        }
-        catch
-        {
-            return "Invalid date";
-        }
-    }
+$san1 = New-Object -ComObject X509Enrollment.CAlternativeName
+$san1.InitializeFromString(0x3, "192.168.1.10")
+$altNames.Add($san1)
+
+$san2 = New-Object -ComObject X509Enrollment.CAlternativeName
+$san2.InitializeFromString(0x3, "192.168.1.11")
+$altNames.Add($san2)
+
+$sanBuilder.InitializeEncode($altNames)
+$cert.X509Extensions.Add($sanBuilder)
